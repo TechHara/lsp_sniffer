@@ -5,7 +5,8 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 fn main() -> Result<()> {
-    // Get the command to run from the first argument
+    // assume the LSP server binary is lsp_server and is in the same directory
+    // create output log files, one for server and one for client
     let args: Vec<_> = std::env::args().skip(1).collect();
     let binary_file = std::env::current_exe()?;
     let binary_dir = binary_file.parent().unwrap();
@@ -25,7 +26,7 @@ fn main() -> Result<()> {
     let mut stdin = process.stdin.take().expect("Failed to get stdin");
     let mut stdout = process.stdout.take().expect("Failed to get stdout");
 
-    // Thread to read from stdin and write to process's stdin
+    // Thread to read from client forward to the server while logging
     let stdin_thread = std::thread::spawn(move || {
         let mut buffer = [0; 1024];
         while let Ok(n) = io::stdin().read(&mut buffer) {
@@ -41,21 +42,21 @@ fn main() -> Result<()> {
         }
     });
 
-    // Read from the process's stdout and write to our own stdout
+    // Read from server and forward to client while logging
     let mut buffer = [0; 1024];
     while let Ok(n) = stdout.read(&mut buffer) {
         if n == 0 {
             break;
         }
         io::stdout().write_all(&buffer[..n])?;
-        io::stdout().flush()?;
+        io::stdout().flush()?; // this is a must
         msg_from_server.write_all(&buffer[..n])?;
     }
 
     // Wait for the child process to finish
     process.wait().expect("Failed to wait for process");
 
-    // Wait for the stdin thread to finish
+    // Wait for the thread to finish
     stdin_thread.join().expect("Failed to join stdin thread");
 
     Ok(())
